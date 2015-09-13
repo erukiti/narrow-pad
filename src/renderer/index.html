@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <meta charset="utf-8">
+  <title data-bind="text: title"></title>
+  <link rel="stylesheet" href="./index.css">
+  <link rel="stylesheet" href="../../vendor/font-awesome-4.4.0/css/font-awesome.min.css">
+<body>
+
+<div class="vertical max-height">
+  <div class="panes horizontal stretch max-height" data-bind="foreach: panes">
+    <div class="pane stretch max-height" data-bind="foreach: vm">
+      <div class="max-height" data-bind="html: html">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.onerror = function(message, file, line, column, err) {
+    console.dir(err.stack);
+  }
+
+  Rx = require('rx');
+  wx = require('../../node_modules/webrx/dist/web.rx');
+
+  require('coffee-script/register');
+  require('./index.coffee');
+</script>
+</body>
+</html>

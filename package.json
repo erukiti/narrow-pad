@@ -1,0 +1,18 @@
+{
+  "name": "narrow-pad",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron src/index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "coffee-script": "^1.10.0",
+    "electron-prebuilt": "^0.32.2",
+    "rx": "^3.1.2",
+    "webrx": "^0.9.87"
+  }
+}

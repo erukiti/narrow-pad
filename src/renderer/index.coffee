@@ -5,21 +5,33 @@ class WritingViewModel
       <div data-bind="text: title"></div>
       <div data-bind="command: changeNovel">小説設定</div>
     </div>
+    <div data-bind="command: changeNarou">
+      なろう詳細設定
+    </div>
+    <div data-bind="command: changeEpisode">
+      エピソード設定
+    </div>
     <div>
       <input data-bind="textInput: @subtitle">
     </div>
-    <textarea class="max-height" data-bind="textInput: @text"></textarea>
+    <textarea class="max-height" data-bind="textInput: @text">
+    </textarea>
     """
     @text = episodeModel.text
     @subtitle = episodeModel.subtitle
     @title = episodeModel.novelModel.title
     @changeNovel = wx.command =>
       episodeModel.novelModel.changeNovel()
+    @changeNarou = wx.command =>
+      episodeModel.novelModel.changeNarou()
+    @changeEpisode = wx.command =>
+      episodeModel.novelModel.changeEpisode(episodeModel)
 
 class NarouViewModel
   constructor: (novelModel, conf) ->
     @html = """
-    <div data-bind="text: title">
+    <div data-bind="command: changeNovel">
+      <div data-bind="text: title"></div>
     </div>
     <div data-bind="foreach: @completedParam">
       <input type="radio" name="radio-group-1" data-bind="value: value, selectedValue: @parent.isCompleted, attr: { id: 'radio-group-1 -' + $index }">
@@ -67,10 +79,12 @@ class NarouViewModel
 
     @exclude = wx.property false
 
-    @author = wx.property ''
+    @authorOverride = wx.property ''
 
-    @changeWriting = wx.command () =>
+    @changeWriting = wx.command =>
       novelModel.changeWriting()
+    @changeNovel = wx.command =>
+      novelModel.changeNovel()
 
 class NovelViewModel
   constructor: (novelModel, conf) ->
@@ -90,18 +104,22 @@ class NovelViewModel
       新規執筆
     </div>
     <div data-bind="foreach: episodes">
-      <div data-bind="text: subtitle">
+      <div data-bind="text: subtitle, command: {command: $parent.changeEpisode, parameter: $data}">
     </div>
     """
     @title = novelModel.title
     @summary = novelModel.summary
     @episodes = novelModel.episodes
+    console.dir @episodes
 
     @changeNarou = wx.command =>
       novelModel.changeNarou()
 
     @newEpisode = wx.command =>
       novelModel.newEpisode()
+
+    @changeEpisode = wx.command (episodeModel) =>
+      novelModel.changeEpisode(episodeModel)
 
 class EpisodeViewModel
   constructor: (episodeModel) ->
@@ -148,15 +166,18 @@ class EpisodeModel
     @preScript = wx.property ''
     @postScript = wx.property ''
 
+    @episodeViewModel = new EpisodeViewModel(@)
+    @writingViewModel = new WritingViewModel(@)
+
 class NovelModel
   constructor: (conf) ->
     @title = wx.property ''
     @summary = wx.property ''
+    @vm = wx.list()
+    @episodes = wx.list()
 
     @novelViewModel = new NovelViewModel(@, conf)
     @narouViewModel = new NarouViewModel(@, conf)
-    @vm = wx.list()
-    @episodes = wx.list()
 
     @changeNovel.call @
 
@@ -172,11 +193,15 @@ class NovelModel
     episodeModel = new EpisodeModel(@)
     @episodes.push episodeModel
     @vm.clear()
-    @vm.push new EpisodeViewModel(episodeModel)
+    @vm.push episodeModel.episodeViewModel
+
+  changeEpisode: (episodeModel) ->
+    @vm.clear()
+    @vm.push episodeModel.episodeViewModel
 
   changeWriting: (episodeModel) ->
     @vm.clear()
-    @vm.push new WritingViewModel(episodeModel)
+    @vm.push episodeModel.writingViewModel
 
   toJson: ->
     JSON.stringify

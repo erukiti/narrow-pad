@@ -28,7 +28,7 @@ class WritingViewModel
       episodeModel.novelModel.changeEpisode(episodeModel)
 
 class NarouViewModel
-  constructor: (novelModel, conf) ->
+  constructor: (novelModel) ->
     @html = """
     <div data-bind="command: changeNovel">
       <div data-bind="text: title"></div>
@@ -87,7 +87,7 @@ class NarouViewModel
       novelModel.changeNovel()
 
 class NovelViewModel
-  constructor: (novelModel, conf) ->
+  constructor: (novelModel) ->
     @html = """
     <div>
       タイトル:
@@ -110,7 +110,6 @@ class NovelViewModel
     @title = novelModel.title
     @summary = novelModel.summary
     @episodes = novelModel.episodes
-    console.dir @episodes
 
     @changeNarou = wx.command =>
       novelModel.changeNarou()
@@ -159,27 +158,100 @@ class EpisodeViewModel
       episodeModel.novelModel.changeNarou()
 
 class EpisodeModel
+  @unmarshal: (obj, novelModel) ->
+    episodeModel = new EpisodeModel(novelModel)
+    episodeModel.subtitle = obj.subtitle
+    episodeModel.text = obj.text
+    episodeModel.preScript = obj.pre_script
+    episodeModel.postScript = obj.post_script
+    episodeModel.originalSubtitle = obj.subtitle
+    episodeModel.originalText = obj.text
+    episodeModel.originalPreScript = obj.pre_script
+    episodeModel.originalPostScript = obj.post_script
+    episodeModel
+
   constructor: (novelModel) ->
     @novelModel = novelModel
+
     @subtitle = wx.property ''
     @text = wx.property ''
     @preScript = wx.property ''
     @postScript = wx.property ''
 
+    @originalSubtitle = wx.property ''
+    @originalText = wx.property ''
+    @originalPreScript = wx.property ''
+    @originalPostScript = wx.property ''
+
+    # GC されないために
+    @changed = wx.whenAny @subtitle, @text, @preScript, @postScript, @originalSubtitle, @originalText, @originalPreScript, @originalPostScript, (subtitle, text, preScript, postScript, originalSubtitle, originalText, originalPreScript, originalPostScript) =>
+
+      if subtitle != originalSubtitle || text != originalText || preScript != originalPreScript || postScript != originalPostScript
+        @novelModel.update()
+
+        @originalSubtitle(@subtitle())
+        @originalText(@text())
+        @originalPreScript(@preScript())
+        @originalPostScript(@postScript())
+
+      'changed'
+    .toProperty()
+
     @episodeViewModel = new EpisodeViewModel(@)
     @writingViewModel = new WritingViewModel(@)
 
+  marshal: (clock) ->
+    {
+      clock: clock
+      subtitle: @subtitle()
+      text: @text()
+      pre_script: @preScript()
+      post_script: @postScript()
+    }
+
 class NovelModel
-  constructor: (conf) ->
+  @unmarshal: (obj) ->
+    novelModel = new novelModel()
+    novelModel.title(obj.title)
+    novelModel.summary(obj.summary)
+    novelModel.originalTitle(obj.title)
+    novelModel.originalSummary(obj.summary)
+
+    for episodeObj in obj.episodes
+      novelModel.episodes.push EpisodeModel.unmarshal(episodeObj, novelModel)
+    novelModel
+
+  constructor: ->
+    @changeSubject = new Rx.Subject()
+    @changeObservable = @changeSubject.publish()
+    @changeObservable.connect()
+
     @title = wx.property ''
     @summary = wx.property ''
+
+    @originalTitle = wx.property ''
+    @originalSummary = wx.property ''
+
+    # GC されないために
+    @chaned = wx.whenAny @title, @summary, @originalTitle, @originalSummary, (title, summary, originalTitle, originalSummary) =>
+
+      if title != originalTitle || summary != originalSummary
+        @update.call @
+
+        @originalTitle(@title())
+        @originalSummary(@summary())
+
+      'changed'
+    .toProperty()
+
     @vm = wx.list()
     @episodes = wx.list()
 
-    @novelViewModel = new NovelViewModel(@, conf)
-    @narouViewModel = new NarouViewModel(@, conf)
+    @novelViewModel = new NovelViewModel(@)
+    @narouViewModel = new NarouViewModel(@)
 
     @changeNovel.call @
+    @clock = 0
 
   changeNarou: ->
     @vm.clear()
@@ -203,15 +275,28 @@ class NovelModel
     @vm.clear()
     @vm.push episodeModel.writingViewModel
 
-  toJson: ->
-    JSON.stringify
+  update: ->
+    console.warn 'update'
+    @changeSubject.onNext(@marshal.call(@))
+
+  marshal: ->
+    @clock = (new Date()).getTime()
+    episodes = []
+    @episodes.forEach (value, index, arr) =>
+      episodes.push value.marshal(@clock)
+
+    {
+      clock: @clock
       title: @title()
       summary: @summary()
-
+      episodes: episodes
+    }
 
 class MainViewModel
   constructor: ->
     novelModel = new NovelModel {}
+    novelModel.changeObservable.subscribe (obj) =>
+      console.dir obj
     @panes = wx.list()
     @panes.push novelModel
     @panes.push {vm: {html: wx.property "<div>fuga</div>"}}

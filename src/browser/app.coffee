@@ -16,17 +16,56 @@ app = require 'app'
 BrowserWindow = require 'browser-window'
 Menu = require 'menu'
 ipc = require 'ipc'
+uuidv4 = require 'uuid-v4'
+fs = require 'fs'
 
 app.on 'window-all-closed', ->
   app.quit()
 
-app.on 'ready', ->
+openBrowser = (packet) ->
   win = new BrowserWindow {
-    width: 800 
-    height: 600
+    width: packet.width
+    height: packet.height
     # 'web-preferences': {'web-security': false}
   }
   win.loadUrl "file://#{__dirname}/../renderer/index.html"
-  win.on 'closed', ->
-    win = null
+  win.webContents.on 'did-finish-load', =>
+    win.webContents.send 'open', packet
+  win
+
+windows = {}
+filename = "#{app.getPath('userData')}/application.json"
+
+try
+  json = fs.readFileSync(filename)
+  data = JSON.parse(json)
+catch e
+  if e.code != 'ENOENT'
+    console.dir err
+
+  data = {}
+  data.width = 800
+  data.height = 600
+  data.opened = [
+    {
+      uuid: uuidv4()
+      width: 800
+      height: 600
+    }
+  ]
+
+  fs.writeFile filename, JSON.stringify(data), (err) =>
+    console.dir err
+
+global.width = data.width
+global.height = data.height
+
+app.on 'ready', ->
+  for packet in data.opened
+    windows[packet.uuid] = openBrowser(packet)
+    windows[packet.uuid].on 'closed', =>
+      windows[packet.uuid] = null
+
+ipc.on 'hoge', (arg, ev) ->
+  console.log arg
 

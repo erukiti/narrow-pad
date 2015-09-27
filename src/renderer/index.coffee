@@ -1,3 +1,10 @@
+uuidv4 = require 'uuid-v4'
+msgpack = require 'msgpack-lite'
+remote = require 'remote'
+app = remote.require 'app'
+fs = require 'fs'
+ipc = require 'ipc'
+
 class WritingViewModel
   constructor: (episodeModel) ->
     @html = """
@@ -160,14 +167,14 @@ class EpisodeViewModel
 class EpisodeModel
   @unmarshal: (obj, novelModel) ->
     episodeModel = new EpisodeModel(novelModel)
-    episodeModel.subtitle = obj.subtitle
-    episodeModel.text = obj.text
-    episodeModel.preScript = obj.pre_script
-    episodeModel.postScript = obj.post_script
-    episodeModel.originalSubtitle = obj.subtitle
-    episodeModel.originalText = obj.text
-    episodeModel.originalPreScript = obj.pre_script
-    episodeModel.originalPostScript = obj.post_script
+    episodeModel.subtitle(obj.subtitle)
+    episodeModel.text(obj.text)
+    episodeModel.preScript(obj.pre_script)
+    episodeModel.postScript(obj.post_script)
+    episodeModel.originalSubtitle(obj.subtitle)
+    episodeModel.originalText(obj.text)
+    episodeModel.originalPreScript(obj.pre_script)
+    episodeModel.originalPostScript(obj.post_script)
     episodeModel
 
   constructor: (novelModel) ->
@@ -211,7 +218,9 @@ class EpisodeModel
 
 class NovelModel
   @unmarshal: (obj) ->
-    novelModel = new novelModel()
+    novelModel = new NovelModel()
+    novelModel.uuid = obj.uuid
+    novelModel.clock = obj.clock
     novelModel.title(obj.title)
     novelModel.summary(obj.summary)
     novelModel.originalTitle(obj.title)
@@ -221,10 +230,12 @@ class NovelModel
       novelModel.episodes.push EpisodeModel.unmarshal(episodeObj, novelModel)
     novelModel
 
-  constructor: ->
+  constructor: (uuid) ->
     @changeSubject = new Rx.Subject()
     @changeObservable = @changeSubject.publish()
     @changeObservable.connect()
+
+    @uuid = uuid
 
     @title = wx.property ''
     @summary = wx.property ''
@@ -276,7 +287,6 @@ class NovelModel
     @vm.push episodeModel.writingViewModel
 
   update: ->
-    console.warn 'update'
     @changeSubject.onNext(@marshal.call(@))
 
   marshal: ->
@@ -286,6 +296,7 @@ class NovelModel
       episodes.push value.marshal(@clock)
 
     {
+      uuid: @uuid
       clock: @clock
       title: @title()
       summary: @summary()
@@ -293,14 +304,61 @@ class NovelModel
     }
 
 class MainViewModel
+  _loadNovel = (uuid) ->
+    re = new RegExp("^#{uuid}-([0-9]+).msgpack$")
+    files = fs.readdirSync app.getPath('userData')
+    clock = '0'
+    for filename in files
+      match = re.exec(filename)
+      continue unless match
+
+      if Number(match[1]) > Number(clock)
+        clock = match[1]
+
+    if clock == '0'
+      null
+    else
+      filename = "#{app.getPath('userData')}/#{uuid}-#{clock}.msgpack"
+      fs.readFileSync filename
+
+  _saveNovel = (obj) ->
+    filename = "#{app.getPath('userData')}/#{obj.uuid}-#{obj.clock}.msgpack"
+
+    fs.writeFile filename, msgpack.encode(obj), (err) =>
+      if err
+        console.error err
+        console.dir err
+      else
+        console.log "saved: #{filename}"
+
   constructor: ->
-    novelModel = new NovelModel {}
-    novelModel.changeObservable.subscribe (obj) =>
-      console.dir obj
     @panes = wx.list()
+
+  openNovel: (uuid) ->
+    if @panes.length() > 0
+      console.error "FATAL すでに開かれてます"
+
+    packed = _loadNovel uuid
+
+    if packed
+      novelModel = NovelModel.unmarshal(msgpack.decode(packed))
+    else
+      novelModel = new NovelModel(uuid)
+
+    novelModel.changeObservable.buffer(=> Rx.Observable.timer(5000)).filter((objs) => objs.length > 0).subscribe (objs) =>
+      obj = objs.pop()
+
+      _saveNovel obj
+
     @panes.push novelModel
-    @panes.push {vm: {html: wx.property "<div>fuga</div>"}}
+
+  loadNovel: (uuid) ->
+
 
 mainViewModel = new MainViewModel()
 
+ipc.on 'open', (packet) =>
+  mainViewModel.openNovel(packet.uuid)
+
 wx.applyBindings(mainViewModel)
+
